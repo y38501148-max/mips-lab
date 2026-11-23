@@ -1,0 +1,75 @@
+name: mips-lab
+services:
+  app:
+    image: mips-lab:local
+    build:
+      context: .
+      args: &proxy-args
+        HTTP_PROXY: ${MIPS_LAB_HTTP_PROXY:-}
+        HTTPS_PROXY: ${MIPS_LAB_HTTPS_PROXY:-}
+        http_proxy: ${MIPS_LAB_HTTP_PROXY:-}
+        https_proxy: ${MIPS_LAB_HTTPS_PROXY:-}
+    init: true
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${MIPS_LAB_PORT:-3210}:3210"
+    environment:
+      HTTP_PROXY: ${MIPS_LAB_HTTP_PROXY:-}
+      HTTPS_PROXY: ${MIPS_LAB_HTTPS_PROXY:-}
+      NO_PROXY: ${MIPS_LAB_NO_PROXY:-localhost,127.*,host.docker.internal}
+    volumes:
+      - data:/app/data
+      - worker-socket:/run/mips-worker:ro
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 512m
+    pids_limit: 96
+    healthcheck:
+      test: [CMD, node, docker/app-health.mjs]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    depends_on:
+      worker:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+  worker:
+    image: mips-lab-worker:local
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+      args: *proxy-args
+    init: true
+    restart: unless-stopped
+    network_mode: none
+    volumes:
+      - worker-socket:/run/mips-worker
+    read_only: true
+    tmpfs:
+      - /work:exec,size=256m,mode=755
+      - /tmp:size=32m,mode=1777
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETUID, SETGID, KILL, DAC_OVERRIDE]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 768m
+    pids_limit: 128
+    healthcheck:
+      test: [CMD, python3, /opt/worker/health.py]
+      interval: 10s
+      timeout: 4s
+      start_period: 10s
+      retries: 3
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+volumes:
+  data:
+    external: true
+    name: mips-lab_data
+  worker-socket:

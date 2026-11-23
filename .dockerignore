@@ -1,0 +1,10 @@
+node_modules
+.nuxt
+.output
+.git
+data
+tests
+*.log
+.env*
+.DS_Store
+VALIDATION.md
