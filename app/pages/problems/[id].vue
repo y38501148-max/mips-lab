@@ -40,6 +40,7 @@ async function saveCases(){savingCases.value=true;manualError.value='';try{let c
  <div class="statement-body"><a-alert v-if="p.verification==='仅样例'||!p.cases.length" type="warning" show-icon :message="p.cases.length?'仅含公开样例':'请先添加测试数据'"/>
  <h2>题目描述</h2><MarkdownText :text="p.description"/>
  <h2>输入格式</h2><MarkdownText :text="p.inputFormat"/>
+ <p v-if="p.source==='洛谷'&&p.generation" class="field-note">题面展示洛谷原始格式。模型生成的纯数字数据可按每行一个数字评测，实际格式见「测试数据」。</p>
  <h2>输出格式</h2><MarkdownText :text="p.outputFormat"/>
  <template v-for="(sample,i) in p.samples" :key="i"><h2>样例 {{i+1}}</h2><div class="statement-sample"><div><div class="io-label">输入</div><pre>{{sample.input}}</pre></div><div><div class="io-label">输出</div><pre>{{sample.output}}</pre></div></div></template>
  <template v-if="p.constraints"><h2>数据范围</h2><MarkdownText :text="p.constraints"/></template>

@@ -1,6 +1,9 @@
 import type {Problem,TestCase} from '../../shared/types'
 import type {GenerationDiagnostic,GenerationPlan} from '../../shared/generation'
 import {compareOutput} from './judge'
+type RunScript=(key:string,input?:string)=>Promise<string>
+const numberToken=/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/
+
 export class GenerationFailure extends Error {
  constructor(public diagnostic:GenerationDiagnostic){super(diagnostic.message);this.name='GenerationFailure'}
 }
@@ -14,7 +17,35 @@ export function parsePlan(text:string):GenerationPlan {
  }
  return {generator:plan.generator,reference:plan.reference,checker:plan.checker,validator:plan.validator,notes:typeof plan.notes==='string'?plan.notes.slice(0,4000):''}
 }
-export async function validatePlan(p:Problem,count:number,run:(key:string,input?:string)=>Promise<string>,progress:(message:string)=>void):Promise<TestCase[]> {
+async function formatNumericCases(cases:TestCase[],run:RunScript,progress:(message:string)=>void):Promise<TestCase[]> {
+ const inputs=cases.map(c=>{
+  const tokens=c.input.trim().split(/\s+/)
+  if(tokens.every(token=>numberToken.test(token)))return tokens.join('\n')+(c.input.endsWith('\n')?'\n':'')
+ })
+ // Use one consistent input protocol for the entire suite, including public samples.
+ if(inputs.includes(undefined))return cases
+
+ const formatted:TestCase[]=[]
+ for(const [i,c] of cases.entries()){
+  const input=inputs[i]!
+  if(input!==c.input){
+   progress(`复核 ${i+1} / ${cases.length}：MIPS 数字逐行输入`)
+   try{
+    await run('validator',input)
+    for(const key of ['reference','checker']){
+     if(!compareOutput(await run(key,input),c.output))return cases
+    }
+   }catch(e){
+    if(e instanceof GenerationFailure)return cases
+    throw e
+   }
+  }
+  formatted.push({...c,input})
+ }
+ return formatted
+}
+
+export async function validatePlan(p:Problem,count:number,run:RunScript,progress:(message:string)=>void):Promise<TestCase[]> {
  progress('执行生成器，检查数据数量与输入格式…')
  const text=await run('generator')
  let parsed;try{parsed=JSON.parse(text)}catch{throw new GenerationFailure({stage:'生成输入',message:'生成器的标准输出不是合法 JSON。',rawOutput:text.slice(0,3000)})}
@@ -39,5 +70,5 @@ export async function validatePlan(p:Problem,count:number,run:(key:string,input?
   if(c.sample&&!compareOutput(a,c.output))throw new GenerationFailure({stage:'样例验证',message:`参考解未通过公开样例 ${i+1}。`,input:c.input,referenceOutput:a.slice(0,4000),checkerOutput:b.slice(0,4000),expectedOutput:c.output})
   cases.push({...c,output:c.sample?c.output:a})
  }
- return cases
+ return p.source==='洛谷'?formatNumericCases(cases,run,progress):cases
 }

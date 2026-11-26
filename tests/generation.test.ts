@@ -22,6 +22,36 @@ test('count mismatches preserve actual count; mismatches preserve the reproducib
  await assert.rejects(validatePlan(p,2,async()=>JSON.stringify([{input:'1\n2\n'}]),()=>{}),(error:any)=>{assert.ok(error instanceof GenerationFailure);assert.equal(error.diagnostic.actualCount,1);assert.equal(error.diagnostic.expectedCount,2);return true})
  await assert.rejects(validatePlan(p,1,async key=>key==='generator'?JSON.stringify([{input:'1\n2\n'}]):key==='validator'?'':key==='reference'?'3':'4',()=>{}),(error:any)=>{assert.equal(error.diagnostic.stage,'双解比较');assert.equal(error.diagnostic.input,p.samples[0]!.input);assert.equal(error.diagnostic.referenceOutput,'3');assert.equal(error.diagnostic.checkerOutput,'4');return true})
 })
+const imported={...p,source:'洛谷',samples:[{input:'12 50\n',output:'62\n',label:'公开样例'}]}
+test('Luogu numeric inputs are converted for evaluation, including public samples',async()=>{
+ const validated:string[]=[]
+ const cases=await validatePlan(imported,1,async(key,input='')=>{
+  if(key==='generator')return JSON.stringify([{input:' -2\t+3e1\r\n.5\r\n',label:'小数'}])
+  if(key==='validator'){validated.push(input);return ''}
+  return String(input.trim().split(/\s+/).map(Number).reduce((sum,n)=>sum+n,0))
+ },()=>{})
+ assert.deepEqual(cases,[
+  {input:'12\n50\n',output:'62\n',label:'公开样例',sample:true},
+  {input:'-2\n+3e1\n.5\n',output:'28.5',label:'小数'}
+ ])
+ assert.deepEqual(validated,['12 50\n',' -2\t+3e1\n.5\n','12\n50\n','-2\n+3e1\n.5\n'])
+ assert.equal(imported.samples[0]!.input,'12 50\n')
+})
+test('Luogu suites preserve inputs when they contain text or line boundaries affect validation or answers',async()=>{
+ for(const scenario of ['text','validator','checker']){
+  const generated=scenario==='text'?'3 letters\n':'3 4\n'
+  const cases=await validatePlan(imported,1,async(key,input='')=>{
+   if(key==='generator')return JSON.stringify([{input:generated}])
+   if(input==='3\n4\n'&&scenario===key){
+    if(key==='validator')throw new GenerationFailure({stage:'脚本执行',message:'expected one line'})
+    return '4'
+   }
+   if(key==='validator')return ''
+   return input.startsWith('12')?'62':'7'
+  },()=>{})
+  assert.deepEqual(cases.map(c=>c.input),['12 50\n',generated],scenario)
+ }
+})
 test('invalid generated count is repaired once with concrete feedback, while keeping keys and reasoning text out of artifacts',async()=>{
  const seen:any[]=[]
  const testApiKey = randomUUID()
